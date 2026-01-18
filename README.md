@@ -81,7 +81,7 @@ gitpr create my-org/backend-api --from feature-login --to main --draft
 
 
 3. **Issue Linking:** * *System asks:* `Link this PR to an Issue? [y/N]`
-* *You paste:* `https://github.com/my-org/issues/issues/50`
+* *You paste:* `https://github.com/my-org/my-repo/issues/50`
 * *Result:* The tool adds a comment to Issue #50: *"PR Created: <link>"*
 
 
