@@ -134,7 +134,7 @@ When you run `gitpr create`, your team sees:
 > 🚀 **New PR Created** in `my-org/backend`
 > **Title:** Fix Login Timeout
 > **Link:** [https://github.com/](https://github.com/)...
-> **Author:** @jdoe
+> **Author:** @abc
 
 ---
 
