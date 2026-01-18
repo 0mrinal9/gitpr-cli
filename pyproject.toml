@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gitpr-cli"
+version = "0.1.0"
+description = "A CLI tool for interactive PR creation and management."
+readme = "README.md"
+authors = [
+  { name = "Mrinal", email = "mrinal0902@gmail.com" },
+]
+requires-python = ">=3.9"
+dependencies = [
+    "typer[all]",
+    "rich",
+    "PyGithub",
+    "GitPython",
+    "requests"
+]
+
+[project.scripts]
+gitpr = "gitpr.main:app"
+
+[project.urls]
+"Homepage" = "https://github.com/0mrinal9/gitpr-cli"
