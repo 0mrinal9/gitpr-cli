@@ -68,24 +68,24 @@ def login():
     """
     console.print(Panel("[bold blue]GitPR Setup Wizard[/bold blue]", expand=False))
     
-    # 1. GitHub Enterprise Logic
+    # GitHub Enterprise Logic
     is_enterprise = typer.confirm("Are you using GitHub Enterprise?", default=False)
     base_url = "https://api.github.com"
     if is_enterprise:
         domain = typer.prompt("Enter Enterprise Domain (e.g. github.acme.com)")
         base_url = f"https://{domain}/api/v3"
 
-    # 2. Token
+    # Token
     console.print(f"\n[dim]Create a token at: {base_url.replace('/api/v3', '')}/settings/tokens[/dim]")
     token = typer.prompt("Paste your GitHub Token", hide_input=True)
 
-    # 3. Slack (Optional)
+    # Slack (Optional)
     setup_slack = typer.confirm("Do you want to configure Slack notifications?", default=False)
     slack_webhook = None
     if setup_slack:
         slack_webhook = typer.prompt("Paste Slack Webhook URL")
 
-    # 4. Save
+    # Save
     if not CONFIG_PATH.parent.exists():
         CONFIG_PATH.parent.mkdir(parents=True)
         
@@ -114,14 +114,14 @@ def create(
     """
     config = load_config()
     
-    # 1. Repo Detection
+    # Repo Detection
     if not repo_arg:
         repo_arg = get_current_repo_context()
         if not repo_arg:
             console.print("[red]❌ Could not detect repository. Run command inside a git folder or provide org/repo argument.[/red]")
             raise typer.Exit(1)
     
-    # 2. Authenticate & Connect
+    # Authenticate & Connect
     with console.status("[dim]Verifying credentials...[/dim]"):
         g = get_github_client(config)
         try:
@@ -130,11 +130,11 @@ def create(
             console.print(f"[red]❌ Access denied to {repo_arg}. Check token scopes.[/red]")
             raise typer.Exit(1)
 
-    # 3. Interactive Inputs
+    # Interactive Inputs
     console.rule(f"[bold blue]Creating PR: {repo_arg}[/bold blue]")
     title = typer.prompt("Enter PR Title")
 
-    # 4. Template & Body (Vim)
+    # Template & Body (Vim)
     template_content = ""
     # Try fetching template
     for path in [".github/pull_request_template.md", "pull_request_template.md", "docs/pull_request_template.md",
@@ -158,7 +158,7 @@ def create(
             raise typer.Exit()
         body = ""
 
-    # 5. Create PR via API
+    # Create PR via API
     with console.status("[bold green]Submitting PR...[/bold green]"):
         try:
             pr = repo.create_pull(
@@ -175,19 +175,18 @@ def create(
     console.print(f"\n[bold green]✔ PR Created Successfully![/bold green]")
     console.print(f"🔗 Link: [link={pr.html_url}]{pr.html_url}[/link]")
 
-    # 6. Issue Linking Logic (User Request: Ask Y/N -> Link -> Comment on Issue)
+    # Issue Linking Logic
     if typer.confirm("Link this PR to an Issue?"):
         issue_url = typer.prompt("Enter Issue URL")
         
-        # FIX: Regex now looks for the path pattern /org/repo/issues/number
-        # This works for github.com, github.ibm.com, or any enterprise domain.
+        # Regex looks for the path pattern /org/repo/issues/number
+        # This works for github.com, or any enterprise domain.
         match = re.search(r"/([\w-]+)/([\w-]+)/issues/(\d+)", issue_url)
         
         if match:
             tgt_org, tgt_repo_name, tgt_issue_num = match.groups()
             try:
-                # We reuse the existing 'g' client which is already authenticated
-                # to the correct Enterprise or Public domain.
+                # We reuse the existing 'g' client
                 tgt_repo = g.get_repo(f"{tgt_org}/{tgt_repo_name}")
                 tgt_issue = tgt_repo.get_issue(int(tgt_issue_num))
                 
@@ -199,7 +198,7 @@ def create(
         else:
             console.print("[yellow]Invalid Issue URL format. Skipping.[/yellow]")
 
-    # 7. Slack Notification (Feature 4)
+    # Slack Notification
     if config.get("slack_webhook"):
         payload = {
             "text": f"🚀 *New PR Created* in `{repo_arg}`\n*Title:* {title}\n*Link:* {pr.html_url}\n*Author:* {g.get_user().login}"
@@ -221,14 +220,14 @@ def comment(
     """
     config = load_config()
     
-    # 1. Repo Detection
+    # Repo Detection
     if not repo_arg:
         repo_arg = get_current_repo_context()
         if not repo_arg:
             console.print("[red]❌ Could not detect repository.[/red]")
             raise typer.Exit(1)
 
-    # 2. Authenticate & Check PR
+    # Authenticate & Check PR
     g = get_github_client(config)
     try:
         repo = g.get_repo(repo_arg)
@@ -237,7 +236,7 @@ def comment(
         console.print(f"[bold red]PR #{pr_number} not found in {repo_arg}[/bold red]")
         raise typer.Exit(1)
 
-    # 3. Open Editor
+    # Open Editor
     console.print(f"[blue]Adding comment to PR #{pr_number} ({pr.title})[/blue]")
     console.print("[dim]Opening editor... Write your comment (Markdown supported).[/dim]")
     
@@ -248,7 +247,7 @@ def comment(
         console.print("[yellow]Comment empty. Aborted.[/yellow]")
         raise typer.Exit()
 
-    # 4. Submit
+    # Submit
     with console.status("[green]Posting comment...[/green]"):
         pr.create_issue_comment(comment_body)
     
