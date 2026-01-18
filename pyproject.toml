@@ -12,11 +12,17 @@ authors = [
 ]
 requires-python = ">=3.9"
 dependencies = [
-    "typer[all]",
+    "typer",
     "rich",
     "PyGithub",
     "GitPython",
-    "requests"
+    "requests",
+    "shellingham"
+]
+license = { file = "LICENSE" }
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
 ]
 
 [project.scripts]
@@ -24,3 +30,6 @@ gitpr = "gitpr.main:app"
 
 [project.urls]
 "Homepage" = "https://github.com/0mrinal9/gitpr-cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gitpr"]
