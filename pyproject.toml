@@ -17,7 +17,8 @@ dependencies = [
     "PyGithub",
     "GitPython",
     "requests",
-    "shellingham"
+    "shellingham",
+    "python-gitlab"
 ]
 license = { file = "LICENSE" }
 classifiers = [
