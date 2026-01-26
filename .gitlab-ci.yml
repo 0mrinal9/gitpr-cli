@@ -1,0 +1,13 @@
+image: python:3.9
+
+stages:
+  - security
+
+dependency_scanning:
+  stage: security
+  script:
+    - pip install --upgrade pip
+    - pip install .
+    - pip install pip-audit
+    - pip-audit
+  allow_failure: false         # Fails the pipeline if a vulnerability is found
