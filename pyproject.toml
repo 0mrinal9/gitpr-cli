@@ -18,7 +18,8 @@ dependencies = [
     "GitPython",
     "requests",
     "shellingham",
-    "python-gitlab"
+    "python-gitlab",
+    "filelock>=3.20.3"
 ]
 license = { file = "LICENSE" }
 classifiers = [
