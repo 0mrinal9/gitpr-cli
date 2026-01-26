@@ -4,7 +4,7 @@ from typing import List, Optional
 from github import Github, GithubException
 import gitlab
 
-# --- Data Models ---
+# Data Models
 class FileDiff:
     def __init__(self, filename, status, additions, deletions, patch):
         self.filename = filename
@@ -37,7 +37,7 @@ class StandardPR:
             self.merged = raw_obj.state == 'merged'
             self.head_ref = raw_obj.source_branch
 
-# --- Abstract Interface ---
+# Abstract Interface
 class Forge(ABC):
     @abstractmethod
     def get_user(self) -> str: pass
@@ -58,7 +58,7 @@ class Forge(ABC):
     @abstractmethod
     def delete_remote_branch(self, branch_name: str): pass
 
-# --- GitHub Implementation ---
+# GitHub Implementation
 class GitHubForge(Forge):
     def __init__(self, token, base_url, repo_slug):
         self.g = Github(base_url=base_url, login_or_token=token)
@@ -102,7 +102,7 @@ class GitHubForge(Forge):
     def delete_remote_branch(self, branch_name):
         self.repo.get_git_ref(f"heads/{branch_name}").delete()
 
-# --- GitLab Implementation ---
+# GitLab Implementation
 class GitLabForge(Forge):
     def __init__(self, token, base_url, repo_slug):
         if "api.github.com" in base_url: base_url = "https://gitlab.com"

@@ -13,14 +13,14 @@ from git import Repo, InvalidGitRepositoryError
 from cryptography.fernet import Fernet
 from gitpr.forges import GitHubForge, GitLabForge, Forge
 
-# --- SETUP ---
+# SETUP
 app = typer.Typer(help="The Universal Git CLI Tool")
 console = Console()
 APP_NAME = "gitpr"
 CONFIG_PATH = Path(typer.get_app_dir(APP_NAME)) / "config.json"
 KEY_PATH = Path(typer.get_app_dir(APP_NAME)) / ".key"
 
-# --- SECURITY UTILS ---
+# SECURITY UTILS
 def load_or_create_key():
     if not KEY_PATH.exists():
         if not KEY_PATH.parent.exists(): KEY_PATH.parent.mkdir(parents=True)
@@ -44,7 +44,7 @@ def load_config():
         raise typer.Exit(code=1)
     with open(CONFIG_PATH, "r") as f: return json.load(f)
 
-# --- FACTORY ---
+# FACTORY
 def get_forge(repo_context: str) -> Forge:
     config = load_config()
     repo = Repo(".")
@@ -79,7 +79,7 @@ def get_current_repo_context():
         return None
     except: return None
 
-# --- COMMANDS ---
+# COMMANDS
 
 @app.command()
 def login(
@@ -88,7 +88,7 @@ def login(
     """Login to GitHub or GitLab (Supports Enterprise)."""
     console.rule(f"[bold blue]Setup {provider.upper()}[/bold blue]")
     
-    # 1. Provider Setup
+    # Provider Setup
     base_url = "https://api.github.com" if provider == "github" else "https://gitlab.com"
     if typer.confirm("Is this an Enterprise instance?", default=False):
         domain = typer.prompt("Enter Domain (e.g. gitlab.company.com)")
@@ -105,7 +105,7 @@ def login(
     # Save Provider Config
     config[provider] = {"token": encrypted_token, "base_url": base_url}
     
-    # 2. Slack Setup (Global)
+    # Slack Setup (Global)
     # Only ask if not already configured, or if user explicitly wants to update it
     configure_slack = True
     if "slack_webhook" in config:
@@ -120,7 +120,7 @@ def login(
         config["slack_webhook"] = webhook
         console.print("[green]✔ Slack configuration updated.[/green]")
     
-    # 3. Save to Disk
+    # Save Config
     if not CONFIG_PATH.parent.exists(): CONFIG_PATH.parent.mkdir(parents=True)
     with open(CONFIG_PATH, "w") as f: json.dump(config, f)
     try: CONFIG_PATH.chmod(0o600)
@@ -237,7 +237,7 @@ def cleanup(branch: str):
     ctx = get_current_repo_context()
     forge = get_forge(ctx)
     
-    # 1. Check Remote Status
+    # Check Remote Status
     with console.status("Checking merge status..."):
         merged_branches = forge.find_merged_branches()
         is_merged = branch in merged_branches
@@ -247,7 +247,7 @@ def cleanup(branch: str):
     else:
         console.print(f"[red]⚠ Remote branch '{branch}' is NOT merged.[/red]")
         
-    # 2. Remote Deletion
+    # Remote Deletion
     if typer.confirm(f"Delete remote branch '{branch}'?"):
         try:
             forge.delete_remote_branch(branch)
@@ -255,7 +255,7 @@ def cleanup(branch: str):
         except Exception as e:
              console.print(f"[red]Error:[/red] {e}")
 
-    # 3. Local Deletion
+    # Local Deletion
     try:
         local_repo = Repo(".")
         if branch in local_repo.heads:
