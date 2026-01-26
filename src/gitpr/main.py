@@ -88,6 +88,7 @@ def login(
     """Login to GitHub or GitLab (Supports Enterprise)."""
     console.rule(f"[bold blue]Setup {provider.upper()}[/bold blue]")
     
+    # 1. Provider Setup
     base_url = "https://api.github.com" if provider == "github" else "https://gitlab.com"
     if typer.confirm("Is this an Enterprise instance?", default=False):
         domain = typer.prompt("Enter Domain (e.g. gitlab.company.com)")
@@ -96,12 +97,30 @@ def login(
     token = typer.prompt(f"Paste {provider.title()} Token", hide_input=True)
     encrypted_token = encrypt_token(token)
 
+    # Load existing config
     config = {}
     if CONFIG_PATH.exists():
         with open(CONFIG_PATH, "r") as f: config = json.load(f)
 
+    # Save Provider Config
     config[provider] = {"token": encrypted_token, "base_url": base_url}
     
+    # 2. Slack Setup (Global)
+    # Only ask if not already configured, or if user explicitly wants to update it
+    configure_slack = True
+    if "slack_webhook" in config:
+        configure_slack = typer.confirm("Slack is already configured. Update it?", default=False)
+    elif typer.confirm("Configure Slack notifications?", default=False):
+        pass # User said yes
+    else:
+        configure_slack = False
+
+    if configure_slack:
+        webhook = typer.prompt("Paste Slack Webhook URL")
+        config["slack_webhook"] = webhook
+        console.print("[green]✔ Slack configuration updated.[/green]")
+    
+    # 3. Save to Disk
     if not CONFIG_PATH.parent.exists(): CONFIG_PATH.parent.mkdir(parents=True)
     with open(CONFIG_PATH, "w") as f: json.dump(config, f)
     try: CONFIG_PATH.chmod(0o600)
@@ -118,6 +137,7 @@ def create(
     """Create a PR/MR."""
     ctx = get_current_repo_context()
     forge = get_forge(ctx)
+    config = load_config()
     
     console.rule(f"[bold blue]Creating Request: {ctx}[/bold blue]")
     title = typer.prompt("Title")
@@ -127,6 +147,16 @@ def create(
         try:
             pr = forge.create_pr(title, body if body else "", from_branch, to_branch, draft)
             console.print(f"\n[bold green]✔ Created![/bold green] [link={pr.url}]{pr.url}[/link]")
+
+            if "slack_webhook" in config:
+                payload = {
+                    "text": f"🚀 *New PR* in `{ctx}`\n*Title:* {title}\n*Author:* {forge.get_user()}\n*Link:* {pr.url}"
+                }
+                try:
+                    requests.post(config["slack_webhook"], json=payload, timeout=5)
+                    console.print("[dim]✔ Slack notification sent.[/dim]")
+                except Exception as e:
+                    console.print(f"[yellow]⚠ Failed to send Slack notification: {e}[/yellow]")
         except Exception as e:
             console.print(f"[red]Failed:[/red] {e}")
 
