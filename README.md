@@ -34,16 +34,6 @@ Requires **Python 3.10+**.
 pip install gitpr
 
 ```
-
-### From Source (Recommended)
-
-```bash
-git clone https://github.com/0mrinal9/gitpr-cli.git
-cd gitpr-cli
-pip install -e .
-
-```
-
 ---
 
 ## ⚙️ Configuration
