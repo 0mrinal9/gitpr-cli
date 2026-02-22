@@ -1,4 +1,4 @@
-# src/gitpr/forge.py
+# src/gitpr/forges.py
 from abc import ABC, abstractmethod
 from typing import List, Optional
 from github import Github, GithubException
@@ -50,7 +50,7 @@ class Forge(ABC):
     @abstractmethod
     def edit_pr(self, number: int, title: str = None, body: str = None): pass
     @abstractmethod
-    def comment(self, number: int, body: str): pass
+    def comment(self, number: int, body: str) -> Optional[str]: pass
     @abstractmethod
     def submit_review(self, number: int, event: str, body: str): pass
     @abstractmethod
@@ -90,7 +90,8 @@ class GitHubForge(Forge):
         self.repo.get_pull(number).edit(**kwargs)
 
     def comment(self, number, body):
-        self.repo.get_pull(number).create_issue_comment(body)
+        comment = self.repo.get_pull(number).create_issue_comment(body)
+        return comment.html_url
 
     def submit_review(self, number, event, body):
         self.repo.get_pull(number).create_review(event=event, body=body)
@@ -148,6 +149,7 @@ class GitLabForge(Forge):
 
     def comment(self, number, body):
         self.project.mergerequests.get(number).notes.create({'body': body})
+        return None
 
     def submit_review(self, number, event, body):
         mr = self.project.mergerequests.get(number)
