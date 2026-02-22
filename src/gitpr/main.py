@@ -3,6 +3,9 @@ import typer
 import json
 import re
 import requests
+import os
+import platform
+import stat
 from pathlib import Path
 from typing import Optional
 from rich.console import Console
@@ -10,6 +13,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.syntax import Syntax
 from git import Repo, InvalidGitRepositoryError
+import git.exc
 from cryptography.fernet import Fernet
 from gitpr.forges import GitHubForge, GitLabForge, Forge
 
@@ -26,8 +30,15 @@ def load_or_create_key():
         if not KEY_PATH.parent.exists(): KEY_PATH.parent.mkdir(parents=True)
         key = Fernet.generate_key()
         with open(KEY_PATH, "wb") as f: f.write(key)
-        try: KEY_PATH.chmod(0o600)
-        except: pass
+        
+        # --- SECURITY FIX: Windows / Unix Permissions ---
+        if platform.system() != "Windows":
+            try: KEY_PATH.chmod(0o600)
+            except: pass
+        else:
+            try: os.chmod(KEY_PATH, stat.S_IREAD)
+            except: pass
+            
     with open(KEY_PATH, "rb") as f: return f.read()
 
 def encrypt_token(token: str) -> str:
@@ -46,8 +57,12 @@ def load_config():
 
 # FACTORY
 def get_forge(repo_context: str) -> Forge:
+    if not repo_context:
+        console.print("[red]Could not detect git repository context. Are you in a git folder?[/red]")
+        raise typer.Exit(1)
+
     config = load_config()
-    repo = Repo(".")
+    repo = Repo(".", search_parent_directories=True)
     remote_url = repo.remotes.origin.url
     
     provider = "github"
@@ -80,7 +95,6 @@ def get_current_repo_context():
     except: return None
 
 # COMMANDS
-
 @app.command()
 def login(
     provider: str = typer.Option("github", "--provider", "-p", help="github or gitlab")
@@ -106,12 +120,11 @@ def login(
     config[provider] = {"token": encrypted_token, "base_url": base_url}
     
     # Slack Setup (Global)
-    # Only ask if not already configured, or if user explicitly wants to update it
     configure_slack = True
     if "slack_webhook" in config:
         configure_slack = typer.confirm("Slack is already configured. Update it?", default=False)
     elif typer.confirm("Configure Slack notifications?", default=False):
-        pass # User said yes
+        pass
     else:
         configure_slack = False
 
@@ -123,8 +136,10 @@ def login(
     # Save Config
     if not CONFIG_PATH.parent.exists(): CONFIG_PATH.parent.mkdir(parents=True)
     with open(CONFIG_PATH, "w") as f: json.dump(config, f)
-    try: CONFIG_PATH.chmod(0o600)
-    except: pass
+    
+    if platform.system() != "Windows":
+        try: CONFIG_PATH.chmod(0o600)
+        except: pass
         
     console.print(f"[green]✔ {provider.title()} configuration saved.[/green]")
 
@@ -132,10 +147,11 @@ def login(
 def create(
     from_branch: str = typer.Option(..., "--from", "-f"),
     to_branch: str = typer.Option(..., "--to", "-t"),
-    draft: bool = typer.Option(False, "--draft")
+    draft: bool = typer.Option(False, "--draft"),
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override")
 ):
     """Create a PR/MR."""
-    ctx = get_current_repo_context()
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     config = load_config()
     
@@ -161,9 +177,13 @@ def create(
             console.print(f"[red]Failed:[/red] {e}")
 
 @app.command()
-def diff(pr_number: int, show_all: bool = typer.Option(False, "--all", "-a")):
+def diff(
+    pr_number: int, 
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override"),
+    show_all: bool = typer.Option(False, "--all", "-a")
+):
     """View Changes (Diffs) - Read Only."""
-    ctx = get_current_repo_context()
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     
     console.rule(f"[bold blue]Diff View: #{pr_number}[/bold blue]")
@@ -188,9 +208,12 @@ def diff(pr_number: int, show_all: bool = typer.Option(False, "--all", "-a")):
         if not show_all: typer.prompt("Next...", show_default=False)
 
 @app.command()
-def review(pr_number: int):
+def review(
+    pr_number: int,
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override")
+):
     """Approve or Request Changes."""
-    ctx = get_current_repo_context()
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     pr = forge.get_pr(pr_number)
     
@@ -205,9 +228,12 @@ def review(pr_number: int):
     console.print("[green]✔ Review Submitted.[/green]")
 
 @app.command()
-def edit(pr_number: int):
+def edit(
+    pr_number: int,
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override")
+):
     """Edit Title/Description."""
-    ctx = get_current_repo_context()
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     pr = forge.get_pr(pr_number)
     
@@ -220,51 +246,155 @@ def edit(pr_number: int):
     console.print("[green]✔ Updated![/green]")
 
 @app.command()
-def comment(pr_number: int):
+def comment(
+    pr_number: int,
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override")
+):
     """Add a comment."""
-    ctx = get_current_repo_context()
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     
-    body = typer.edit(extension=".md")
-    if not body: raise typer.Exit()
+    console.print(f"Opening editor for PR #{pr_number}...")
     
-    forge.comment(pr_number, body)
-    console.print("[green]✔ Comment added.[/green]")
+    # Robust Notepad-safe logic
+    body = typer.edit(
+        "\n\n# Type your comment above.\n# Remember to SAVE (Ctrl+S) before closing the editor!\n# Lines starting with '#' will be ignored.", 
+        extension=".md"
+    )
+
+    if not body:
+        console.print("[yellow]⚠ Comment aborted (No text detected).[/yellow]")
+        raise typer.Exit()
+
+    # Clean up the placeholder text
+    clean_body = "\n".join(
+        [line for line in body.splitlines() if not line.strip().startswith("#")]
+    ).strip()
+
+    if not clean_body:
+        console.print("[yellow]⚠ Comment aborted (Empty after cleaning).[/yellow]")
+        raise typer.Exit()
+
+    with console.status("[green]Posting comment...[/green]"):
+        try:
+            url = forge.comment(pr_number, clean_body)
+            console.print(f"[bold green]✔ Comment posted successfully![/bold green]")
+            if url:
+                console.print(f"[link={url}]{url}[/link]")
+        except Exception as e:
+            console.print(f"[red]❌ Failed to post comment:[/red] {e}")
 
 @app.command()
-def cleanup(branch: str):
-    """Delete a merged branch locally and remotely."""
-    ctx = get_current_repo_context()
+def cleanup(
+    branch: str, 
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override"),
+    force: bool = typer.Option(False, "--force", "-f", help="Delete even if unmerged")
+):
+    """Safely delete a branch (Remote & Local)."""
+    ctx = repo_context or get_current_repo_context()
     forge = get_forge(ctx)
     
-    # Check Remote Status
-    with console.status("Checking merge status..."):
-        merged_branches = forge.find_merged_branches()
-        is_merged = branch in merged_branches
-    
-    if is_merged:
-        console.print(f"[green]✔ Remote branch '{branch}' is merged.[/green]")
-    else:
-        console.print(f"[red]⚠ Remote branch '{branch}' is NOT merged.[/red]")
-        
-    # Remote Deletion
-    if typer.confirm(f"Delete remote branch '{branch}'?"):
-        try:
-            forge.delete_remote_branch(branch)
-            console.print("✔ Remote deleted.")
-        except Exception as e:
-             console.print(f"[red]Error:[/red] {e}")
-
-    # Local Deletion
     try:
-        local_repo = Repo(".")
-        if branch in local_repo.heads:
-            if typer.confirm(f"Delete local branch '{branch}'?"):
-                flag = "-D" if not is_merged else "-d"
-                local_repo.git.branch(flag, branch)
-                console.print("✔ Local deleted.")
+        local_repo = Repo(".", search_parent_directories=True)
     except Exception as e:
-        console.print(f"[dim]Local delete skipped: {e}[/dim]")
+        console.print(f"[red]Could not load local git repo:[/red] {e}")
+        raise typer.Exit(1)
+
+    console.rule(f"[bold red]Janitor: {branch}[/bold red]")
+
+    # 1. Check Remote Status
+    with console.status(f"Checking if '{branch}' is merged..."):
+        try:
+            refs = local_repo.git.ls_remote("--heads", "origin", branch)
+            if not refs:
+                console.print(f"[yellow]⚠ Remote branch '{branch}' does not exist.[/yellow]")
+            else:
+                if not force:
+                    confirm = typer.confirm(f"Are you sure you want to delete remote branch 'origin/{branch}'?", default=False)
+                    if not confirm:
+                        console.print("[red]Aborted.[/red]")
+                        raise typer.Exit()
+
+                # Delete Remote
+                local_repo.git.push("origin", "--delete", branch)
+                console.print(f"[green]✔ Deleted remote branch 'origin/{branch}'[/green]")
+
+        except typer.Exit:
+            raise
+        except Exception as e:
+            console.print(f"[red]Error handling remote:[/red] {e}")
+
+    # 2. Delete Local
+    try:
+        if branch in local_repo.heads:
+            if not force:
+                try:
+                    # --- SECURITY FIX: -- Separator ---
+                    local_repo.git.branch("-d", "--", branch)
+                    console.print(f"[green]✔ Deleted local branch '{branch}'[/green]")
+                except git.exc.GitCommandError:
+                    console.print(f"[red]⚠ Branch '{branch}' is not fully merged.[/red]")
+                    console.print("Use [bold]--force[/bold] to delete anyway.")
+            else:
+                # Force delete (-D)
+                local_repo.git.branch("-D", "--", branch)
+                console.print(f"[green]✔ Force deleted local branch '{branch}'[/green]")
+        else:
+             console.print(f"[dim]Local branch '{branch}' not found.[/dim]")
+
+    except Exception as e:
+        console.print(f"[red]Failed to delete local:[/red] {e}")
+
+@app.command()
+def link(
+    filepath: str,
+    repo_context: str = typer.Argument(None, help="Optional: org/repo override"),
+    lines: str = typer.Option(None, "--lines", "-l", help="Specific lines (e.g. 10-20)")
+):
+    """Generate a permalink to a file or image."""
+    
+    # --- SECURITY FIX: Prevent Path Traversal ---
+    if ".." in filepath:
+        console.print("[red]❌ Security Warning: Path traversal ('..') is not allowed.[/red]")
+        raise typer.Exit(1)
+
+    ctx = repo_context or get_current_repo_context()
+    forge = get_forge(ctx)
+
+    try:
+        local_repo = Repo(".", search_parent_directories=True)
+        commit_sha = local_repo.head.commit.hexsha
+    except Exception as e:
+        console.print(f"[red]Failed to get local commit SHA:[/red] {e}")
+        console.print("Are you running this inside a git directory?")
+        raise typer.Exit(1)
+
+    # Determine Base URL
+    config = load_config()
+    provider = "github"
+    if isinstance(forge, GitLabForge):
+        provider = "gitlab"
+    
+    base = config[provider]["base_url"]
+
+    # Construct URL based on forge formatting
+    if provider == "github":
+        domain = base.replace("api.", "").replace("/api/v3", "")
+        url = f"{domain}/{ctx}/blob/{commit_sha}/{filepath}"
+        if lines:
+            if "-" in lines:
+                start, end = lines.split("-")
+                url += f"#L{start}-L{end}"
+            else:
+                url += f"#L{lines}"
+    else:
+        domain = base.replace("/api/v4", "")
+        url = f"{domain}/{ctx}/-/blob/{commit_sha}/{filepath}"
+        if lines:
+            url += f"#L{lines}"
+            
+    console.print(f"\n[bold green]✔ Link Generated:[/bold green]\n{url}")
+
 
 def main():
     app()
